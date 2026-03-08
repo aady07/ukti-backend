@@ -18,7 +18,7 @@ import java.util.UUID;
 @RequestMapping("/users")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "https://miraista.com", "http://miraista.com", "https://education.miraista.com", "http://education.miraista.com", "https://ukti.example.com"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://localhost:5172", "https://miraista.com", "http://miraista.com", "https://www.miraista.com", "http://www.miraista.com", "https://education.miraista.com", "http://education.miraista.com", "https://educationuat.miraista.com", "http://educationuat.miraista.com", "https://ukti.example.com"})
 public class UserController {
 
     private final UserService userService;

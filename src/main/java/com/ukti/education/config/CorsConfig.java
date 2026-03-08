@@ -17,10 +17,15 @@ public class CorsConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:3000",
                 "http://localhost:5173",
+                "http://localhost:5172",
                 "https://miraista.com",
                 "http://miraista.com",
+                "https://www.miraista.com",
+                "http://www.miraista.com",
                 "https://education.miraista.com",
                 "http://education.miraista.com",
+                "https://educationuat.miraista.com",
+                "http://educationuat.miraista.com",
                 "https://ukti.example.com"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
