@@ -29,7 +29,7 @@ public class CorsConfig {
                 "https://ukti.example.com"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cognito-Sub"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cognito-Sub", "X-Roll-Number", "X-Class-Id"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

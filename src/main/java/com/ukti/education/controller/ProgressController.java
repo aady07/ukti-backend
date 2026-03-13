@@ -1,5 +1,6 @@
 package com.ukti.education.controller;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,7 +21,6 @@ import com.ukti.education.dto.ExperientialStatResponse;
 import com.ukti.education.dto.ModuleProgressResponse;
 import com.ukti.education.dto.TaskCompletionRequest;
 import com.ukti.education.dto.TaskCompletionResponse;
-import com.ukti.education.dto.UserProgressResponse;
 import com.ukti.education.service.AuthContextService;
 import com.ukti.education.service.ProgressService;
 
@@ -42,15 +42,22 @@ public class ProgressController {
     public ResponseEntity<?> completeModule(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader,
+            @RequestHeader(value = "X-Roll-Number", required = false) String rollNumberHeader,
+            @RequestHeader(value = "X-Class-Id", required = false) String classIdHeader,
             @PathVariable String moduleId) {
 
         log.info("API POST /progress/module/{}/complete called", moduleId);
 
-        Optional<UUID> userId = authContextService.resolveUserId(authorization, cognitoSubHeader);
+        Optional<UUID> userId = authContextService.resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
         if (userId.isEmpty()) {
+            if (rollNumberHeader != null && !rollNumberHeader.isBlank()) {
+                log.warn("API POST /progress/module/{}/complete FAILED: 400 Student not found for roll number", moduleId);
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new UserController.ErrorResponse("STUDENT_NOT_FOUND", "Student not found for roll number"));
+            }
             log.warn("API POST /progress/module/{}/complete FAILED: 401 Unauthorized", moduleId);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito JWT required"));
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito or teacher JWT required"));
         }
 
         try {
@@ -67,15 +74,29 @@ public class ProgressController {
     public ResponseEntity<?> getModuleProgress(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader,
+            @RequestHeader(value = "X-Roll-Number", required = false) String rollNumberHeader,
+            @RequestHeader(value = "X-Class-Id", required = false) String classIdHeader,
             @PathVariable String moduleId) {
 
         log.info("API GET /progress/module/{} called", moduleId);
 
-        Optional<UUID> userId = authContextService.resolveUserId(authorization, cognitoSubHeader);
+        Optional<UUID> userId = authContextService.resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
         if (userId.isEmpty()) {
+            if (rollNumberHeader != null && !rollNumberHeader.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new UserController.ErrorResponse("STUDENT_NOT_FOUND", "Student not found for roll number"));
+            }
+            if (authContextService.isAuthorized(authorization, cognitoSubHeader)) {
+                return ResponseEntity.ok(ModuleProgressResponse.builder()
+                        .moduleId(moduleId)
+                        .completed(false)
+                        .completedAt(null)
+                        .tasks(List.of())
+                        .build());
+            }
             log.warn("API GET /progress/module/{} FAILED: 401 Unauthorized", moduleId);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito JWT required"));
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito or teacher JWT required"));
         }
 
         Optional<ModuleProgressResponse> response = progressService.getModuleProgress(userId.get(), moduleId);
@@ -87,38 +108,25 @@ public class ProgressController {
         return ResponseEntity.notFound().build();
     }
 
-    @GetMapping("/user")
-    public ResponseEntity<?> getUserProgress(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader) {
-
-        log.info("API GET /progress/user called");
-
-        Optional<UUID> userId = authContextService.resolveUserId(authorization, cognitoSubHeader);
-        if (userId.isEmpty()) {
-            log.warn("API GET /progress/user FAILED: 401 Unauthorized");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito JWT required"));
-        }
-
-        UserProgressResponse response = progressService.getUserProgress(userId.get());
-        log.info("API GET /progress/user SUCCESS: 200");
-        return ResponseEntity.ok(response);
-    }
-
     @PostMapping("/task")
     public ResponseEntity<?> recordTaskCompletion(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader,
+            @RequestHeader(value = "X-Roll-Number", required = false) String rollNumberHeader,
+            @RequestHeader(value = "X-Class-Id", required = false) String classIdHeader,
             @Valid @RequestBody TaskCompletionRequest request) {
 
         log.info("API POST /progress/task called, moduleId={}, taskId={}", request.getModuleId(), request.getTaskId());
 
-        Optional<UUID> userId = authContextService.resolveUserId(authorization, cognitoSubHeader);
+        Optional<UUID> userId = authContextService.resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
         if (userId.isEmpty()) {
+            if (rollNumberHeader != null && !rollNumberHeader.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new UserController.ErrorResponse("STUDENT_NOT_FOUND", "Student not found for roll number"));
+            }
             log.warn("API POST /progress/task FAILED: 401 Unauthorized");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito JWT required"));
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito or teacher JWT required"));
         }
 
         try {
@@ -135,16 +143,22 @@ public class ProgressController {
     public ResponseEntity<?> updateExperientialStat(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader,
+            @RequestHeader(value = "X-Roll-Number", required = false) String rollNumberHeader,
+            @RequestHeader(value = "X-Class-Id", required = false) String classIdHeader,
             @PathVariable String moduleId,
             @Valid @RequestBody ExperientialStatRequest request) {
 
         log.info("API PUT /progress/experiential/{} called, statType={}", moduleId, request.getStatType());
 
-        Optional<UUID> userId = authContextService.resolveUserId(authorization, cognitoSubHeader);
+        Optional<UUID> userId = authContextService.resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
         if (userId.isEmpty()) {
+            if (rollNumberHeader != null && !rollNumberHeader.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new UserController.ErrorResponse("STUDENT_NOT_FOUND", "Student not found for roll number"));
+            }
             log.warn("API PUT /progress/experiential/{} FAILED: 401 Unauthorized", moduleId);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito JWT required"));
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito or teacher JWT required"));
         }
 
         try {

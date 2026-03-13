@@ -7,12 +7,9 @@ import lombok.Data;
 @Data
 public class UserRequest {
 
-    @NotBlank(message = "cognitoSub is required")
-    private String cognitoSub;
+    private String cognitoSub;  // Required for individual/school_admin; null for students
 
-    @NotBlank(message = "email is required")
-    @Email(message = "Invalid email format")
-    private String email;
+    private String email;  // Required for individual/school_admin; null for students
 
     private String phone;
 
@@ -20,5 +17,11 @@ public class UserRequest {
 
     private String displayName;
 
-    private String schoolId;
+    private String schoolId;  // Legacy
+
+    /** "individual" (default) or "organization" (school admin signup) */
+    private String signupType;
+
+    /** Required when signupType=organization; school name */
+    private String organizationName;
 }
