@@ -52,7 +52,7 @@ public class TeacherService {
 
     public List<TeacherResponse> listTeachers(UUID schoolId) {
         List<Teacher> teachers = teacherRepository.findBySchoolIdOrderByEmail(schoolId);
-        return teachers.stream().map(this::toSimpleResponse).collect(Collectors.toList());
+        return teachers.stream().map(this::toFullResponse).collect(Collectors.toList());
     }
 
     public Optional<TeacherResponse> validateAndGetTeacher(String email, String password, UUID schoolId) {
