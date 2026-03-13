@@ -92,6 +92,25 @@ public class SchoolService {
         return teacherService.addTeacher(schoolId, request);
     }
 
+    @Transactional
+    public void assignTeacherToClass(UUID schoolId, UUID classId, String teacherIdStr) {
+        if (!schoolClassRepository.findById(classId).filter(c -> c.getSchoolId().equals(schoolId)).isPresent()) {
+            throw new IllegalArgumentException("Class not found or does not belong to school");
+        }
+        if (teacherIdStr == null || teacherIdStr.isBlank()) {
+            return;  // No teacher to assign
+        }
+        try {
+            UUID teacherId = UUID.fromString(teacherIdStr.trim());
+            if (!teacherRepository.findById(teacherId).filter(t -> t.getSchoolId().equals(schoolId)).isPresent()) {
+                throw new IllegalArgumentException("Teacher not found or does not belong to school");
+            }
+            teacherService.assignTeacherToClass(teacherId, classId);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        }
+    }
+
     public List<TeacherResponse> listTeachers(UUID schoolId) {
         return teacherService.listTeachers(schoolId);
     }

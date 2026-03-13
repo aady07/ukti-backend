@@ -4,6 +4,7 @@ import com.ukti.education.dto.AddStudentsRequest;
 import com.ukti.education.dto.AddStudentsResponse;
 import com.ukti.education.dto.AddTeacherRequest;
 import com.ukti.education.dto.ClassCreateRequest;
+import com.ukti.education.dto.ClassUpdateRequest;
 import com.ukti.education.dto.ClassLeaderboardResponse;
 import com.ukti.education.dto.ClassResponse;
 import com.ukti.education.dto.LastActivityResponse;
@@ -92,6 +93,27 @@ public class SchoolController {
 
         AddStudentsResponse response = schoolService.addStudents(schoolId, classId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PatchMapping("/{schoolId}/classes/{classId}")
+    public ResponseEntity<?> updateClass(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID classId,
+            @RequestBody(required = false) ClassUpdateRequest request) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+        if (auth.get().isTeacher()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new UserController.ErrorResponse("FORBIDDEN", "Only school admin can update classes"));
+        }
+
+        schoolService.assignTeacherToClass(schoolId, classId, request != null ? request.getTeacherId() : null);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{schoolId}/classes/{classId}/students")

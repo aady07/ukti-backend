@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.ukti.education.dto.ExperientialStatRequest;
 import com.ukti.education.dto.ExperientialStatResponse;
 import com.ukti.education.dto.ModuleProgressResponse;
+import com.ukti.education.dto.UserProgressResponse;
 import com.ukti.education.dto.TaskCompletionRequest;
 import com.ukti.education.dto.TaskCompletionResponse;
 import com.ukti.education.service.AuthContextService;
@@ -37,6 +38,30 @@ public class ProgressController {
 
     private final ProgressService progressService;
     private final AuthContextService authContextService;
+
+    @GetMapping("/user")
+    public ResponseEntity<?> getUserProgress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader,
+            @RequestHeader(value = "X-Roll-Number", required = false) String rollNumberHeader,
+            @RequestHeader(value = "X-Class-Id", required = false) String classIdHeader) {
+
+        Optional<UUID> userId = authContextService.resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
+        if (userId.isEmpty()) {
+            if (authContextService.isAuthorized(authorization, cognitoSubHeader)) {
+                return ResponseEntity.ok(UserProgressResponse.builder()
+                        .modules(List.of())
+                        .tasks(List.of())
+                        .experientialStats(List.of())
+                        .build());
+            }
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito or teacher JWT required"));
+        }
+
+        UserProgressResponse response = progressService.getUserProgress(userId.get());
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping("/module/{moduleId}/complete")
     public ResponseEntity<?> completeModule(
