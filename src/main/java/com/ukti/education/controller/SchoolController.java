@@ -1,28 +1,39 @@
 package com.ukti.education.controller;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.ukti.education.dto.AddStudentsRequest;
 import com.ukti.education.dto.AddStudentsResponse;
 import com.ukti.education.dto.AddTeacherRequest;
 import com.ukti.education.dto.ClassCreateRequest;
-import com.ukti.education.dto.ClassUpdateRequest;
 import com.ukti.education.dto.ClassLeaderboardResponse;
 import com.ukti.education.dto.ClassResponse;
+import com.ukti.education.dto.ClassUpdateRequest;
 import com.ukti.education.dto.LastActivityResponse;
 import com.ukti.education.dto.SchoolProgressOverviewResponse;
 import com.ukti.education.dto.StudentResponse;
 import com.ukti.education.dto.TeacherResponse;
 import com.ukti.education.service.SchoolAuthService;
 import com.ukti.education.service.SchoolService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/schools")
@@ -113,7 +124,7 @@ public class SchoolController {
         }
 
         schoolService.assignTeacherToClass(schoolId, classId, request != null ? request.getTeacherId() : null);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(java.util.Map.of("success", true));
     }
 
     @GetMapping("/{schoolId}/classes/{classId}/students")
