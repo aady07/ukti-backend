@@ -53,6 +53,8 @@ public class UserController {
         if (body != null) {
             if (body.getDisplayName() != null) request.setDisplayName(body.getDisplayName());
             if (body.getSchoolId() != null) request.setSchoolId(body.getSchoolId());
+            if (body.getSignupType() != null) request.setSignupType(body.getSignupType());
+            if (body.getOrganizationName() != null) request.setOrganizationName(body.getOrganizationName());
         }
 
         try {
