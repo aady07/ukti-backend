@@ -11,6 +11,8 @@ public interface TeacherClassRepository extends JpaRepository<TeacherClass, Teac
 
     List<TeacherClass> findByTeacherId(UUID teacherId);
 
+    List<TeacherClass> findByClassId(UUID classId);
+
     boolean existsByTeacherIdAndClassId(UUID teacherId, UUID classId);
 
     void deleteByTeacherIdAndClassId(UUID teacherId, UUID classId);
