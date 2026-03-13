@@ -48,10 +48,27 @@ public class SchoolService {
         List<ClassResponse> result = new ArrayList<>();
         for (SchoolClass c : classes) {
             long count = userRepository.findBySchoolUuidAndClassIdAndUserTypeOrderByRollNumber(schoolId, c.getId(), USER_TYPE_STUDENT).size();
+            String teacherId = null;
+            String teacherName = null;
+            List<com.ukti.education.entity.TeacherClass> assignments = teacherClassRepository.findByClassId(c.getId());
+            if (!assignments.isEmpty()) {
+                com.ukti.education.entity.TeacherClass tc = assignments.stream()
+                        .filter(a -> Boolean.TRUE.equals(a.getIsMainTeacher()))
+                        .findFirst()
+                        .orElse(assignments.get(0));
+                var teacherOpt = teacherRepository.findById(tc.getTeacherId());
+                if (teacherOpt.isPresent()) {
+                    var t = teacherOpt.get();
+                    teacherId = t.getId().toString();
+                    teacherName = t.getName() != null ? t.getName() : t.getEmail();
+                }
+            }
             result.add(ClassResponse.builder()
                     .id(c.getId().toString())
                     .name(c.getName())
                     .studentCount((int) count)
+                    .teacherId(teacherId)
+                    .teacherName(teacherName)
                     .build());
         }
         return result;

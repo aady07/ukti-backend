@@ -14,4 +14,6 @@ public class ClassResponse {
     private String id;
     private String name;
     private Integer studentCount;
+    private String teacherId;
+    private String teacherName;
 }
