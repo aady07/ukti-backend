@@ -26,7 +26,11 @@ public class CorsConfig {
                 "http://education.miraista.com",
                 "https://educationuat.miraista.com",
                 "http://educationuat.miraista.com",
-                "https://ukti.example.com"
+                "https://ukti.example.com",
+                "https://meetukti.com",
+                "http://meetukti.com",
+                "https://www.meetukti.com",
+                "http://www.meetukti.com"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cognito-Sub", "X-Roll-Number", "X-Class-Id"));
