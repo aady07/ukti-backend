@@ -90,6 +90,34 @@ public class TeacherService {
         }
     }
 
+    /**
+     * Replaces all teachers for a class. First id is main teacher. Empty list clears assignments.
+     */
+    @Transactional
+    public void replaceTeachersForClass(UUID schoolId, UUID classId, List<UUID> teacherIds) {
+        teacherClassRepository.deleteByClassId(classId);
+        for (int i = 0; i < teacherIds.size(); i++) {
+            UUID tid = teacherIds.get(i);
+            Teacher teacher = teacherRepository.findById(tid)
+                    .filter(t -> t.getSchoolId().equals(schoolId))
+                    .orElseThrow(() -> new IllegalArgumentException("Teacher not found or does not belong to school"));
+            teacherClassRepository.save(TeacherClass.builder()
+                    .teacherId(teacher.getId())
+                    .classId(classId)
+                    .isMainTeacher(i == 0)
+                    .build());
+        }
+    }
+
+    @Transactional
+    public void deleteTeacher(UUID schoolId, UUID teacherId) {
+        Teacher teacher = teacherRepository.findById(teacherId)
+                .filter(t -> t.getSchoolId().equals(schoolId))
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        teacherClassRepository.deleteByTeacherId(teacherId);
+        teacherRepository.delete(teacher);
+    }
+
     private TeacherResponse toSimpleResponse(Teacher teacher) {
         return TeacherResponse.builder()
                 .id(teacher.getId().toString())

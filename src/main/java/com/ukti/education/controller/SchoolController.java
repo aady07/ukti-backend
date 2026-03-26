@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -58,6 +59,46 @@ public class SchoolController {
 
         List<ClassResponse> classes = schoolService.listClasses(schoolId);
         return ResponseEntity.ok(classes);
+    }
+
+    @GetMapping("/{schoolId}/classes/{classId}")
+    public ResponseEntity<?> getClass(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID classId) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+
+        Optional<ClassResponse> cls = schoolService.getClass(schoolId, classId);
+        if (cls.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new UserController.ErrorResponse("NOT_FOUND", "Class not found"));
+        }
+        return ResponseEntity.ok(cls.get());
+    }
+
+    @GetMapping("/{schoolId}/classes/{classId}/teachers")
+    public ResponseEntity<?> listTeachersForClass(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID classId) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+
+        Optional<ClassResponse> cls = schoolService.getClass(schoolId, classId);
+        if (cls.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new UserController.ErrorResponse("NOT_FOUND", "Class not found"));
+        }
+        return ResponseEntity.ok(cls.get().getTeachers() != null ? cls.get().getTeachers() : List.of());
     }
 
     @PostMapping("/{schoolId}/classes")
@@ -123,8 +164,38 @@ public class SchoolController {
                     .body(new UserController.ErrorResponse("FORBIDDEN", "Only school admin can update classes"));
         }
 
-        schoolService.assignTeacherToClass(schoolId, classId, request != null ? request.getTeacherId() : null);
-        return ResponseEntity.ok(java.util.Map.of("success", true));
+        try {
+            ClassResponse updated = schoolService.updateClassTeachers(schoolId, classId, request != null ? request : new ClassUpdateRequest());
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new UserController.ErrorResponse("BAD_REQUEST", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{schoolId}/teachers/{teacherId}")
+    public ResponseEntity<?> deleteTeacher(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID teacherId) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+        if (auth.get().isTeacher()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new UserController.ErrorResponse("FORBIDDEN", "Only school admin can delete teachers"));
+        }
+
+        try {
+            schoolService.deleteTeacher(schoolId, teacherId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new UserController.ErrorResponse("NOT_FOUND", e.getMessage()));
+        }
     }
 
     @GetMapping("/{schoolId}/classes/{classId}/students")

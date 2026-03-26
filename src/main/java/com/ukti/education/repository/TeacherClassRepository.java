@@ -16,4 +16,8 @@ public interface TeacherClassRepository extends JpaRepository<TeacherClass, Teac
     boolean existsByTeacherIdAndClassId(UUID teacherId, UUID classId);
 
     void deleteByTeacherIdAndClassId(UUID teacherId, UUID classId);
+
+    void deleteByClassId(UUID classId);
+
+    void deleteByTeacherId(UUID teacherId);
 }
