@@ -6,6 +6,8 @@ import com.ukti.education.dto.AddTeacherRequest;
 import com.ukti.education.dto.ClassCreateRequest;
 import com.ukti.education.dto.ClassLeaderboardResponse;
 import com.ukti.education.dto.ClassResponse;
+import com.ukti.education.dto.ClassTeacherSummary;
+import com.ukti.education.dto.ClassUpdateRequest;
 import com.ukti.education.dto.LastActivityResponse;
 import com.ukti.education.dto.TeacherResponse;
 import com.ukti.education.dto.SchoolProgressOverviewResponse;
@@ -40,6 +42,7 @@ public class SchoolService {
     private final UserRepository userRepository;
     private final UserActivityProgressRepository userActivityProgressRepository;
     private final TeacherService teacherService;
+    private final ActivityLogicalCompletionService activityLogicalCompletionService;
     private final com.ukti.education.repository.TeacherRepository teacherRepository;
     private final com.ukti.education.repository.TeacherClassRepository teacherClassRepository;
 
@@ -47,31 +50,79 @@ public class SchoolService {
         List<SchoolClass> classes = schoolClassRepository.findBySchoolIdOrderByName(schoolId);
         List<ClassResponse> result = new ArrayList<>();
         for (SchoolClass c : classes) {
-            long count = userRepository.findBySchoolUuidAndClassIdAndUserTypeOrderByRollNumber(schoolId, c.getId(), USER_TYPE_STUDENT).size();
-            String teacherId = null;
-            String teacherName = null;
-            List<com.ukti.education.entity.TeacherClass> assignments = teacherClassRepository.findByClassId(c.getId());
-            if (!assignments.isEmpty()) {
-                com.ukti.education.entity.TeacherClass tc = assignments.stream()
-                        .filter(a -> Boolean.TRUE.equals(a.getIsMainTeacher()))
-                        .findFirst()
-                        .orElse(assignments.get(0));
-                var teacherOpt = teacherRepository.findById(tc.getTeacherId());
-                if (teacherOpt.isPresent()) {
-                    var t = teacherOpt.get();
-                    teacherId = t.getId().toString();
-                    teacherName = t.getName() != null ? t.getName() : t.getEmail();
-                }
-            }
-            result.add(ClassResponse.builder()
-                    .id(c.getId().toString())
-                    .name(c.getName())
-                    .studentCount((int) count)
-                    .teacherId(teacherId)
-                    .teacherName(teacherName)
-                    .build());
+            result.add(buildClassResponse(schoolId, c));
         }
         return result;
+    }
+
+    public Optional<ClassResponse> getClass(UUID schoolId, UUID classId) {
+        return schoolClassRepository.findById(classId)
+                .filter(c -> c.getSchoolId().equals(schoolId))
+                .map(c -> buildClassResponse(schoolId, c));
+    }
+
+    /**
+     * Same shape as each item in GET /classes: id, name, studentCount, teacherId, teacherName, teachers[].
+     */
+    public ClassResponse buildClassResponse(UUID schoolId, SchoolClass c) {
+        long count = userRepository.findBySchoolUuidAndClassIdAndUserTypeOrderByRollNumber(schoolId, c.getId(), USER_TYPE_STUDENT).size();
+        List<com.ukti.education.entity.TeacherClass> assignments = teacherClassRepository.findByClassId(c.getId());
+        List<ClassTeacherSummary> teachers = new ArrayList<>();
+        for (com.ukti.education.entity.TeacherClass tc : assignments) {
+            teacherRepository.findById(tc.getTeacherId()).ifPresent(t ->
+                    teachers.add(ClassTeacherSummary.builder()
+                            .id(t.getId().toString())
+                            .name(t.getName())
+                            .email(t.getEmail())
+                            .mainTeacher(tc.getIsMainTeacher())
+                            .build()));
+        }
+        String teacherId = null;
+        String teacherName = null;
+        if (!assignments.isEmpty()) {
+            com.ukti.education.entity.TeacherClass tc = assignments.stream()
+                    .filter(a -> Boolean.TRUE.equals(a.getIsMainTeacher()))
+                    .findFirst()
+                    .orElse(assignments.get(0));
+            var teacherOpt = teacherRepository.findById(tc.getTeacherId());
+            if (teacherOpt.isPresent()) {
+                var t = teacherOpt.get();
+                teacherId = t.getId().toString();
+                teacherName = t.getName() != null ? t.getName() : t.getEmail();
+            }
+        }
+        return ClassResponse.builder()
+                .id(c.getId().toString())
+                .name(c.getName())
+                .studentCount((int) count)
+                .teacherId(teacherId)
+                .teacherName(teacherName)
+                .teachers(teachers)
+                .build();
+    }
+
+    @Transactional
+    public ClassResponse updateClassTeachers(UUID schoolId, UUID classId, ClassUpdateRequest request) {
+        if (!schoolClassRepository.findById(classId).filter(c -> c.getSchoolId().equals(schoolId)).isPresent()) {
+            throw new IllegalArgumentException("Class not found or does not belong to school");
+        }
+        if (request.getTeacherIds() != null) {
+            List<UUID> ids = new ArrayList<>();
+            for (String s : request.getTeacherIds()) {
+                if (s != null && !s.isBlank()) {
+                    ids.add(UUID.fromString(s.trim()));
+                }
+            }
+            teacherService.replaceTeachersForClass(schoolId, classId, ids);
+        } else if (request.getTeacherId() != null) {
+            if (request.getTeacherId().isBlank()) {
+                teacherService.replaceTeachersForClass(schoolId, classId, List.of());
+            } else {
+                teacherService.replaceTeachersForClass(schoolId, classId, List.of(UUID.fromString(request.getTeacherId().trim())));
+            }
+        }
+        SchoolClass c = schoolClassRepository.findById(classId).orElseThrow();
+        return buildClassResponse(schoolId, c);
     }
 
     public ClassResponse createClass(UUID schoolId, ClassCreateRequest request) {
@@ -98,34 +149,15 @@ public class SchoolService {
             }
         }
 
-        return ClassResponse.builder()
-                .id(schoolClass.getId().toString())
-                .name(schoolClass.getName())
-                .studentCount(0)
-                .build();
+        return buildClassResponse(schoolId, schoolClass);
     }
 
     public TeacherResponse addTeacher(UUID schoolId, AddTeacherRequest request) {
         return teacherService.addTeacher(schoolId, request);
     }
 
-    @Transactional
-    public void assignTeacherToClass(UUID schoolId, UUID classId, String teacherIdStr) {
-        if (!schoolClassRepository.findById(classId).filter(c -> c.getSchoolId().equals(schoolId)).isPresent()) {
-            throw new IllegalArgumentException("Class not found or does not belong to school");
-        }
-        if (teacherIdStr == null || teacherIdStr.isBlank()) {
-            return;  // No teacher to assign
-        }
-        try {
-            UUID teacherId = UUID.fromString(teacherIdStr.trim());
-            if (!teacherRepository.findById(teacherId).filter(t -> t.getSchoolId().equals(schoolId)).isPresent()) {
-                throw new IllegalArgumentException("Teacher not found or does not belong to school");
-            }
-            teacherService.assignTeacherToClass(teacherId, classId);
-        } catch (IllegalArgumentException e) {
-            throw e;
-        }
+    public void deleteTeacher(UUID schoolId, UUID teacherId) {
+        teacherService.deleteTeacher(schoolId, teacherId);
     }
 
     public List<TeacherResponse> listTeachers(UUID schoolId) {
@@ -254,9 +286,9 @@ public class SchoolService {
     public SchoolProgressOverviewResponse getProgressOverview(UUID schoolId, UUID adminUserId, Integer totalActivities, Set<UUID> classIdsToInclude) {
         int total = totalActivities != null && totalActivities > 0 ? totalActivities : 0;
 
-        long adminCompleted = adminUserId != null ? userActivityProgressRepository.countByUserId(adminUserId) : 0;
+        long adminCompleted = adminUserId != null ? activityLogicalCompletionService.countLogicalCompletedActivities(adminUserId) : 0;
         List<SchoolProgressOverviewResponse.UnitProgressSummary> adminUnits = adminUserId != null ? getUnitProgressForUser(adminUserId) : List.of();
-        int adminPercent = total > 0 ? (int) Math.round(100.0 * adminCompleted / total) : 0;
+        int adminPercent = total > 0 ? Math.min(100, (int) Math.round(100.0 * adminCompleted / total)) : 0;
 
         SchoolProgressOverviewResponse.AdminProgressSummary adminProgress = SchoolProgressOverviewResponse.AdminProgressSummary.builder()
                 .completedCount((int) adminCompleted)
@@ -276,8 +308,8 @@ public class SchoolService {
             List<SchoolProgressOverviewResponse.StudentProgressSummary> studentSummaries = new ArrayList<>();
 
             for (User s : students) {
-                long completed = userActivityProgressRepository.countByUserId(s.getId());
-                int percent = total > 0 ? (int) Math.round(100.0 * completed / total) : 0;
+                int completed = activityLogicalCompletionService.countLogicalCompletedActivities(s.getId());
+                int percent = total > 0 ? Math.min(100, (int) Math.round(100.0 * completed / total)) : 0;
                 studentSummaries.add(SchoolProgressOverviewResponse.StudentProgressSummary.builder()
                         .studentId(s.getId().toString())
                         .rollNumber(s.getRollNumber())
