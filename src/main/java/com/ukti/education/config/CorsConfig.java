@@ -14,24 +14,7 @@ public class CorsConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "http://localhost:5172",
-                "https://miraista.com",
-                "http://miraista.com",
-                "https://www.miraista.com",
-                "http://www.miraista.com",
-                "https://education.miraista.com",
-                "http://education.miraista.com",
-                "https://educationuat.miraista.com",
-                "http://educationuat.miraista.com",
-                "https://ukti.example.com",
-                "https://meetukti.com",
-                "http://meetukti.com",
-                "https://www.meetukti.com",
-                "http://www.meetukti.com"
-        ));
+        config.setAllowedOrigins(CorsOrigins.allowedOrigins());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Cognito-Sub", "X-Roll-Number", "X-Class-Id"));
         config.setAllowCredentials(true);
