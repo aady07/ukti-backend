@@ -30,6 +30,8 @@ import com.ukti.education.dto.SchoolProgressOverviewResponse;
 import com.ukti.education.dto.StudentModulesProgressResponse;
 import com.ukti.education.dto.StudentResponse;
 import com.ukti.education.dto.TeacherResponse;
+import com.ukti.education.dto.StudentActivityMediaListResponse;
+import com.ukti.education.service.ActivityMediaService;
 import com.ukti.education.service.ModuleProgressAggregationService;
 import com.ukti.education.service.SchoolAuthService;
 import com.ukti.education.service.SchoolService;
@@ -47,6 +49,7 @@ public class SchoolController {
     private final SchoolAuthService schoolAuthService;
     private final SchoolService schoolService;
     private final ModuleProgressAggregationService moduleProgressAggregationService;
+    private final ActivityMediaService activityMediaService;
 
     @GetMapping("/{schoolId}/classes")
     public ResponseEntity<?> listClasses(
@@ -380,5 +383,41 @@ public class SchoolController {
 
         ClassModulesProgressResponse response = moduleProgressAggregationService.getClassModuleProgress(schoolId, classId);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Stored activity captures (image/audio) for a student — presigned read URLs for school staff.
+     */
+    @GetMapping("/{schoolId}/students/{studentId}/activity-media")
+    public ResponseEntity<?> getStudentActivityMedia(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID studentId) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+        if (auth.get().isTeacher() && auth.get().teacherId() != null) {
+            if (!schoolService.canAccessStudentForTeacher(schoolId, studentId, auth.get().teacherId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new UserController.ErrorResponse("FORBIDDEN", "Student not in your classes"));
+            }
+        }
+        try {
+            StudentActivityMediaListResponse body = activityMediaService.listForStudent(schoolId, studentId);
+            return ResponseEntity.ok(body);
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new UserController.ErrorResponse("NOT_FOUND", e.getReason() != null ? e.getReason() : "Not found"));
+            }
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new UserController.ErrorResponse("FORBIDDEN", e.getReason() != null ? e.getReason() : "Forbidden"));
+            }
+            throw e;
+        }
     }
 }

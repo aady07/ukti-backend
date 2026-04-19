@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ukti-postgres-local
+    environment:
+      POSTGRES_USER: ukti
+      POSTGRES_PASSWORD: ukti_local_dev
+      POSTGRES_DB: ukti_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ukti_pg_data:/var/lib/postgresql/data
+
+volumes:
+  ukti_pg_data:

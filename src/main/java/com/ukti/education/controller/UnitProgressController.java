@@ -1,6 +1,9 @@
 package com.ukti.education.controller;
 
 import com.ukti.education.dto.*;
+import com.ukti.education.entity.User;
+import com.ukti.education.repository.UserRepository;
+import com.ukti.education.service.ActivityMediaService;
 import com.ukti.education.service.AuthContextService;
 import com.ukti.education.service.UserActivityProgressService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +25,8 @@ public class UnitProgressController {
 
     private final UserActivityProgressService progressService;
     private final AuthContextService authContextService;
+    private final ActivityMediaService activityMediaService;
+    private final UserRepository userRepository;
 
     @GetMapping
     public ResponseEntity<?> getAllProgress(
@@ -123,5 +128,48 @@ public class UnitProgressController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response.get());
         }
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    }
+
+    /**
+     * Presign S3 PUT URLs so the browser uploads image/audio directly (same API auth as complete).
+     * Store returned keys in {@link ActivityMediaService#META_IMAGE_KEY} / {@link ActivityMediaService#META_AUDIO_KEY}
+     * via the existing complete call metadata.
+     */
+    @PostMapping("/{unitSlug}/activities/{activitySlug}/media/presign")
+    public ResponseEntity<?> presignActivityMedia(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Cognito-Sub", required = false) String cognitoSubHeader,
+            @RequestHeader(value = "X-Roll-Number", required = false) String rollNumberHeader,
+            @RequestHeader(value = "X-Class-Id", required = false) String classIdHeader,
+            @PathVariable String unitSlug,
+            @PathVariable String activitySlug,
+            @RequestBody(required = false) MediaPresignRequest request) {
+
+        Optional<UUID> userId = authContextService.resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
+        if (userId.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid Cognito or teacher JWT required"));
+        }
+        Optional<User> userOpt = userRepository.findById(userId.get());
+        if (userOpt.isEmpty() || userOpt.get().getSchoolUuid() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new UserController.ErrorResponse("MEDIA_UNAVAILABLE", "Activity media requires a school-scoped student account"));
+        }
+        try {
+            MediaPresignResponse body = activityMediaService.presignUpload(
+                    userId.get(),
+                    userOpt.get().getSchoolUuid(),
+                    unitSlug,
+                    activitySlug,
+                    request != null ? request.getImageContentType() : null,
+                    request != null ? request.getAudioContentType() : null);
+            return ResponseEntity.ok(body);
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(new UserController.ErrorResponse("MEDIA_DISABLED", e.getReason() != null ? e.getReason() : "Media storage off"));
+            }
+            throw e;
+        }
     }
 }

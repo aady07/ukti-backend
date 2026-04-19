@@ -211,6 +211,24 @@ public class SchoolService {
     }
 
     /**
+     * Teacher may view a student only if the student is in a class assigned to that teacher.
+     */
+    public boolean canAccessStudentForTeacher(UUID schoolId, UUID studentUserId, UUID teacherId) {
+        Optional<User> s = userRepository.findById(studentUserId);
+        if (s.isEmpty() || !USER_TYPE_STUDENT.equals(s.get().getUserType())) {
+            return false;
+        }
+        if (s.get().getSchoolUuid() == null || !schoolId.equals(s.get().getSchoolUuid())) {
+            return false;
+        }
+        UUID classId = s.get().getClassId();
+        if (classId == null) {
+            return false;
+        }
+        return canAccessClass(schoolId, classId, teacherId);
+    }
+
+    /**
      * Returns the most recent activity completed by any student in this class.
      * Empty if no activity in class.
      */

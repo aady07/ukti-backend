@@ -22,6 +22,8 @@ public class UserService {
     private static final String SIGNUP_TYPE_ORGANIZATION = "organization";
     private static final String USER_TYPE_INDIVIDUAL = "individual";
     private static final String USER_TYPE_SCHOOL_ADMIN = "school_admin";
+    private static final String USER_TYPE_STUDENT = "student";
+    private static final String USER_TYPE_ORG_ADMIN = "org_admin";
 
     private final UserRepository userRepository;
     private final SchoolRepository schoolRepository;
@@ -42,13 +44,34 @@ public class UserService {
     protected UserResponse createSchoolAdmin(UserRequest request) {
         Optional<User> existing = userRepository.findByCognitoSub(request.getCognitoSub());
         if (existing.isPresent()) {
-            log.info("UserService: Updating existing school admin cognitoSub={}", request.getCognitoSub());
             User user = existing.get();
+            if (USER_TYPE_STUDENT.equals(user.getUserType())) {
+                throw new IllegalArgumentException("Student accounts cannot be converted to school admin");
+            }
+            if (USER_TYPE_SCHOOL_ADMIN.equals(user.getUserType()) || USER_TYPE_ORG_ADMIN.equals(user.getUserType())) {
+                log.info("UserService: Updating existing school admin cognitoSub={}", request.getCognitoSub());
+                user.setEmail(request.getEmail());
+                user.setPhone(request.getPhone());
+                user.setUsername(request.getUsername());
+                if (request.getDisplayName() != null) user.setDisplayName(request.getDisplayName());
+                user = userRepository.save(user);
+                return toResponse(user);
+            }
+            // Was individual (or legacy): attach school and promote to school_admin
+            String schoolName = request.getOrganizationName() != null && !request.getOrganizationName().isBlank()
+                    ? request.getOrganizationName().trim()
+                    : "My School";
+            School school = School.builder().name(schoolName).build();
+            school = schoolRepository.save(school);
+            user.setSchoolUuid(school.getId());
+            user.setUserType(USER_TYPE_SCHOOL_ADMIN);
             user.setEmail(request.getEmail());
             user.setPhone(request.getPhone());
             user.setUsername(request.getUsername());
             if (request.getDisplayName() != null) user.setDisplayName(request.getDisplayName());
             user = userRepository.save(user);
+            log.info("UserService: Promoted individual to school admin cognitoSub={}, schoolId={}",
+                    request.getCognitoSub(), school.getId());
             return toResponse(user);
         }
 

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,7 +54,14 @@ public class UserActivityProgressService {
         UserActivityProgress up;
         if (existing.isPresent()) {
             up = existing.get();
-            if (metadata != null) up.setMetadata(metadata);
+            if (metadata != null) {
+                Map<String, Object> merged = new HashMap<>();
+                if (up.getMetadata() != null) {
+                    merged.putAll(up.getMetadata());
+                }
+                merged.putAll(metadata);
+                up.setMetadata(merged);
+            }
             up = progressRepository.save(up);
             log.info("UserActivityProgressService: Activity updated userId={}, unitSlug={}, activitySlug={}", userId, unitSlug, activitySlug);
         } else {
