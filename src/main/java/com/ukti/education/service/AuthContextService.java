@@ -1,13 +1,15 @@
 package com.ukti.education.service;
 
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+
 import com.ukti.education.entity.User;
 import com.ukti.education.repository.TeacherClassRepository;
 import com.ukti.education.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
-import java.util.Optional;
-import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Resolves the current user from Cognito JWT or X-Cognito-Sub header.

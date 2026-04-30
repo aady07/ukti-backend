@@ -27,6 +27,8 @@ public final class CorsOrigins {
                 "https://meetukti.com",
                 "http://meetukti.com",
                 "https://www.meetukti.com",
-                "http://www.meetukti.com");
+                "http://www.meetukti.com",
+                "https://uat.meetukti.com",
+                "http://uat.meetukti.com");
     }
 }
