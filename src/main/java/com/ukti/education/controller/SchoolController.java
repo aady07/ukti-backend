@@ -6,7 +6,6 @@ import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -23,12 +22,15 @@ import com.ukti.education.dto.AddStudentsResponse;
 import com.ukti.education.dto.AddTeacherRequest;
 import com.ukti.education.dto.ClassCreateRequest;
 import com.ukti.education.dto.ClassLeaderboardResponse;
+import com.ukti.education.dto.ClassModulesProgressResponse;
 import com.ukti.education.dto.ClassResponse;
 import com.ukti.education.dto.ClassUpdateRequest;
 import com.ukti.education.dto.LastActivityResponse;
 import com.ukti.education.dto.SchoolProgressOverviewResponse;
+import com.ukti.education.dto.StudentModulesProgressResponse;
 import com.ukti.education.dto.StudentResponse;
 import com.ukti.education.dto.TeacherResponse;
+import com.ukti.education.service.ModuleProgressAggregationService;
 import com.ukti.education.service.SchoolAuthService;
 import com.ukti.education.service.SchoolService;
 
@@ -40,11 +42,11 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/schools")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://localhost:5172", "https://miraista.com", "http://miraista.com", "https://www.miraista.com", "http://www.miraista.com", "https://education.miraista.com", "http://education.miraista.com", "https://educationuat.miraista.com", "http://educationuat.miraista.com", "https://ukti.example.com", "https://meetukti.com", "http://meetukti.com", "https://www.meetukti.com", "http://www.meetukti.com"})
 public class SchoolController {
 
     private final SchoolAuthService schoolAuthService;
     private final SchoolService schoolService;
+    private final ModuleProgressAggregationService moduleProgressAggregationService;
 
     @GetMapping("/{schoolId}/classes")
     public ResponseEntity<?> listClasses(
@@ -329,6 +331,54 @@ public class SchoolController {
         }
 
         ClassLeaderboardResponse response = schoolService.getClassLeaderboard(schoolId, classId, limit);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{schoolId}/classes/{classId}/students/{rollNumber}/modules/progress")
+    public ResponseEntity<?> getStudentModulesProgress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID classId,
+            @PathVariable String rollNumber) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+        SchoolAuthService.SchoolAuthContext ctx = auth.get();
+        if (!schoolService.canAccessClass(schoolId, classId, ctx.isTeacher() ? ctx.teacherId() : null)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new UserController.ErrorResponse("FORBIDDEN", "Class not found or access denied"));
+        }
+
+        Optional<StudentModulesProgressResponse> response =
+                moduleProgressAggregationService.getStudentModuleProgress(schoolId, classId, rollNumber);
+        if (response.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new UserController.ErrorResponse("NOT_FOUND", "Student not found"));
+        }
+        return ResponseEntity.ok(response.get());
+    }
+
+    @GetMapping("/{schoolId}/classes/{classId}/modules/progress")
+    public ResponseEntity<?> getClassModulesProgress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID schoolId,
+            @PathVariable UUID classId) {
+
+        Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
+        if (auth.isEmpty() || !auth.get().schoolId().equals(schoolId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", "Valid school admin or teacher JWT required"));
+        }
+        SchoolAuthService.SchoolAuthContext ctx = auth.get();
+        if (!schoolService.canAccessClass(schoolId, classId, ctx.isTeacher() ? ctx.teacherId() : null)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new UserController.ErrorResponse("FORBIDDEN", "Class not found or access denied"));
+        }
+
+        ClassModulesProgressResponse response = moduleProgressAggregationService.getClassModuleProgress(schoolId, classId);
         return ResponseEntity.ok(response);
     }
 }

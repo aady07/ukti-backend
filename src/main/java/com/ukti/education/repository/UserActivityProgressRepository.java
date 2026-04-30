@@ -16,6 +16,9 @@ public interface UserActivityProgressRepository extends JpaRepository<UserActivi
     @Query("SELECT p FROM UserActivityProgress p JOIN p.user u WHERE u.schoolUuid = :schoolId AND u.classId = :classId AND u.userType = 'student' ORDER BY p.completedAt DESC")
     List<UserActivityProgress> findLatestBySchoolAndClass(@Param("schoolId") UUID schoolId, @Param("classId") UUID classId, Pageable pageable);
 
+    @Query("SELECT p FROM UserActivityProgress p JOIN p.user u WHERE u.schoolUuid = :schoolId AND u.classId = :classId AND u.userType = 'student' ORDER BY p.completedAt DESC")
+    List<UserActivityProgress> findBySchoolAndClassStudents(@Param("schoolId") UUID schoolId, @Param("classId") UUID classId);
+
     List<UserActivityProgress> findByUserIdOrderByCompletedAtDesc(UUID userId);
 
     @Query("SELECT COUNT(u) FROM UserActivityProgress u WHERE u.user.id = :userId")
