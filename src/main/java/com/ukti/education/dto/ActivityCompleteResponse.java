@@ -12,7 +12,6 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ActivityCompleteResponse {
-
     private String activityId;
     private Instant completedAt;
     private Object metadata;
