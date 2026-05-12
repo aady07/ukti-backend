@@ -1,6 +1,5 @@
 package com.ukti.education.controller;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ukti.education.dto.*;
 import com.ukti.education.service.ClassModuleRunException;
 import com.ukti.education.service.ClassModuleRunService;
@@ -13,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -171,7 +171,7 @@ public class ClassModuleRunController {
     public ResponseEntity<?> patchRuntimeState(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable UUID runId,
-            @RequestBody ObjectNode body) {
+            @RequestBody Map<String, Object> body) {
         Optional<SchoolAuthService.SchoolAuthContext> auth = schoolAuthService.resolveSchoolAuth(authorization);
         if (auth.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

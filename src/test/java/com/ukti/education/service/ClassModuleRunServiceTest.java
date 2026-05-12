@@ -1,7 +1,7 @@
 package com.ukti.education.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ukti.education.dto.ClassModuleActivityCompleteRequest;
 import com.ukti.education.dto.ClassModuleRunPatchRequest;
@@ -223,8 +223,10 @@ class ClassModuleRunServiceTest {
         when(classSectionGateRepository.findByRunIdOrderBySectionIndexAsc(runId)).thenReturn(List.of());
 
         ClassModuleRunPatchRequest req = new ClassModuleRunPatchRequest();
-        req.setClassRuntimeState(om.readValue(
-                "{\"stationFlowV1\":{\"challengeIndex\":2,\"rollsDoneForStep\":[\"1\",\"3\"]}}", ObjectNode.class));
+        Map<String, Object> patch = om.readValue(
+                "{\"stationFlowV1\":{\"challengeIndex\":2,\"rollsDoneForStep\":[\"1\",\"3\"]}}",
+                new TypeReference<Map<String, Object>>() {});
+        req.setClassRuntimeState(patch);
 
         service.patchRun(runId, req);
 

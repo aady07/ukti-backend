@@ -1,8 +1,8 @@
 package com.ukti.education.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ukti.education.dto.*;
 import com.ukti.education.entity.*;
@@ -21,6 +21,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ClassModuleRunService {
     private static final JsonNodeFactory JSON_NODES = JsonNodeFactory.instance;
+
+    /** Spring Boot 4 does not always register an {@code ObjectMapper} bean; local mapper for Map → JsonNode. */
+    private static final ObjectMapper REQUEST_JSON = new ObjectMapper().findAndRegisterModules();
 
     public static record RunScope(UUID schoolId, UUID classId) {}
 
@@ -297,15 +300,16 @@ public class ClassModuleRunService {
      */
     @Transactional
     public ClassModuleRunStatusResponse patchRun(UUID runId, ClassModuleRunPatchRequest request) {
-        if (request == null || request.getClassRuntimeState() == null || request.getClassRuntimeState().isNull()) {
+        if (request == null || request.getClassRuntimeState() == null) {
             throw new ClassModuleRunException("BAD_REQUEST", "classRuntimeState is required");
         }
-        if (!request.getClassRuntimeState().isObject()) {
+        JsonNode patchNode = REQUEST_JSON.valueToTree(request.getClassRuntimeState());
+        if (!patchNode.isObject()) {
             throw new ClassModuleRunException("BAD_REQUEST", "classRuntimeState must be a JSON object");
         }
         ClassModuleRun run = classModuleRunRepository.findWithLockById(runId)
                 .orElseThrow(() -> new ClassModuleRunException("RUN_NOT_FOUND", "Run not found"));
-        JsonNode merged = deepMergeJsonNodes(emptyObjectIfNull(run.getClassRuntimeState()), request.getClassRuntimeState());
+        JsonNode merged = deepMergeJsonNodes(emptyObjectIfNull(run.getClassRuntimeState()), patchNode);
         run.setClassRuntimeState(merged);
         classModuleRunRepository.save(run);
         log.info("run_runtime_state_patched runId={}", runId);
@@ -317,10 +321,11 @@ public class ClassModuleRunService {
      * {@code { "classRuntimeState": { "stationFlowV1": {...} } } }.
      */
     @Transactional
-    public ClassModuleRunStatusResponse patchRuntimeState(UUID runId, ObjectNode body) {
-        if (body == null || body.isNull()) {
+    public ClassModuleRunStatusResponse patchRuntimeState(UUID runId, Map<String, Object> rawBody) {
+        if (rawBody == null) {
             throw new ClassModuleRunException("BAD_REQUEST", "Request body is required");
         }
+        JsonNode body = REQUEST_JSON.valueToTree(rawBody);
         JsonNode patch;
         if (body.has("classRuntimeState")) {
             JsonNode wrapped = body.get("classRuntimeState");
