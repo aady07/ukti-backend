@@ -5,14 +5,17 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
+import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ActivityCompleteResponse {
-    private String activityId;
-    private Instant completedAt;
-    private Object metadata;
+public class EngagementSessionBatchResponse {
+
+    @Builder.Default
+    private boolean ok = true;
+
+    private UUID sessionId;
+    private UUID receivedBatchId;
 }

@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
+import com.ukti.education.dto.EngagementSubject;
 import com.ukti.education.entity.User;
 import com.ukti.education.repository.TeacherClassRepository;
 import com.ukti.education.repository.UserRepository;
@@ -144,5 +145,22 @@ public class AuthContextService {
             return Optional.empty();
         }
         return userRepository.findByCognitoSub(cognitoSub).map(User::getId);
+    }
+
+    /**
+     * User row for engagement ingest (same effective user rules as {@link #resolveEffectiveUserId}).
+     */
+    public Optional<EngagementSubject> resolveEngagementSubject(
+            String authorization,
+            String cognitoSubHeader,
+            String rollNumberHeader,
+            String classIdHeader) {
+
+        Optional<UUID> userId = resolveEffectiveUserId(authorization, cognitoSubHeader, rollNumberHeader, classIdHeader);
+        if (userId.isEmpty()) {
+            return Optional.empty();
+        }
+        return userRepository.findById(userId.get())
+                .map(u -> new EngagementSubject(u.getId(), u.getSchoolUuid(), u.getClassId(), u.getRollNumber()));
     }
 }
