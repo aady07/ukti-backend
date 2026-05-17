@@ -31,6 +31,10 @@ public final class CorsOrigins {
                 "https://uat.meetukti.com",
                 "http://uat.meetukti.com",
                 "https://www.uat.meetukti.com",
-                "http://www.uat.meetukti.com");
+                "http://www.uat.meetukti.com",
+                "https://ags.meetukti.com",
+                "http://ags.meetukti.com",
+                "https://www.ags.meetukti.com",
+                "http://www.ags.meetukti.com");
     }
 }
