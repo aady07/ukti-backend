@@ -3,6 +3,7 @@ package com.ukti.education.controller;
 import com.ukti.education.dto.TeacherLoginRequest;
 import com.ukti.education.dto.TeacherLoginResponse;
 import com.ukti.education.dto.TeacherResponse;
+import com.ukti.education.service.SuperAdminService;
 import com.ukti.education.service.TeacherJwtService;
 import com.ukti.education.service.TeacherService;
 import jakarta.validation.Valid;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,6 +25,7 @@ public class AuthController {
 
     private final TeacherService teacherService;
     private final TeacherJwtService teacherJwtService;
+    private final SuperAdminService superAdminService;
 
     @PostMapping("/teacher/login")
     public ResponseEntity<?> teacherLogin(@Valid @RequestBody TeacherLoginRequest request) {
@@ -55,5 +58,19 @@ public class AuthController {
 
         log.info("Teacher login success: {}", teacher.getEmail());
         return ResponseEntity.ok(response);
+    }
+
+    /** DB email/password super admin — no Cognito. */
+    @PostMapping("/super-admin/login")
+    public ResponseEntity<?> superAdminLogin(@RequestBody Map<String, String> body) {
+        String email = body != null ? body.get("email") : null;
+        String password = body != null ? body.get("password") : null;
+        Optional<Map<String, Object>> result = superAdminService.login(email, password);
+        if (result.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("LOGIN_FAILED", "Super admin login failed"));
+        }
+        log.info("Super admin login success: {}", email);
+        return ResponseEntity.ok(result.get());
     }
 }

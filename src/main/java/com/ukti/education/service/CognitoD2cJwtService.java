@@ -21,56 +21,52 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Validates Cognito JWT tokens and extracts user claims.
- * JWKS URL: https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/jwks.json
+ * Validates D2C Cognito JWTs (try customers + super_admin).
+ * Falls back to school JWKS URL when d2c.jwks-url is empty (dev until pool is wired).
  */
 @Service
 @Slf4j
-public class CognitoJwtService {
+public class CognitoD2cJwtService {
 
     private final ConfigurableJWTProcessor<SecurityContext> jwtProcessor;
+    private final boolean configured;
 
-    public CognitoJwtService(
-            @Value("${ukti.cognito.jwks-url:https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_XYqySdLwI/.well-known/jwks.json}") String jwksUrl) {
+    public CognitoD2cJwtService(
+            @Value("${ukti.cognito.d2c.jwks-url:}") String d2cJwksUrl,
+            @Value("${ukti.cognito.jwks-url:https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_XYqySdLwI/.well-known/jwks.json}") String schoolJwksUrl) {
+        String url = (d2cJwksUrl != null && !d2cJwksUrl.isBlank()) ? d2cJwksUrl.trim() : schoolJwksUrl;
+        this.configured = url != null && !url.isBlank();
         try {
-            JWKSource<SecurityContext> keySource = new RemoteJWKSet<>(new URL(jwksUrl));
-            JWSKeySelector<SecurityContext> keySelector = new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keySource);
+            JWKSource<SecurityContext> keySource = new RemoteJWKSet<>(new URL(url));
+            JWSKeySelector<SecurityContext> keySelector =
+                    new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keySource);
             this.jwtProcessor = new DefaultJWTProcessor<>();
             this.jwtProcessor.setJWSKeySelector(keySelector);
+            log.info("CognitoD2cJwtService initialized jwks={}", url);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize Cognito JWKS: " + e.getMessage());
+            throw new RuntimeException("Failed to initialize D2C Cognito JWKS: " + e.getMessage());
         }
     }
 
-    /**
-     * Validates the Cognito JWT and returns user claims if valid.
-     */
     public Optional<CognitoUserClaims> validateAndExtract(String bearerToken) {
-        if (bearerToken == null || bearerToken.isBlank()) {
+        if (!configured || bearerToken == null || bearerToken.isBlank()) {
             return Optional.empty();
         }
-        String token = bearerToken.startsWith("Bearer ") ? bearerToken.substring(7).trim() : bearerToken.trim();
-        if (token.isEmpty()) {
-            return Optional.empty();
-        }
+        String token = bearerToken.startsWith("Bearer ")
+                ? bearerToken.substring(7).trim()
+                : bearerToken.trim();
+        if (token.isEmpty()) return Optional.empty();
 
         try {
             JWTClaimsSet claims = jwtProcessor.process(token, null);
-
             String sub = claims.getSubject();
-            if (sub == null || sub.isBlank()) {
-                return Optional.empty();
-            }
+            if (sub == null || sub.isBlank()) return Optional.empty();
 
             String email = getStringClaim(claims, "email");
             String phone = getStringClaim(claims, "phone_number");
             String username = getStringClaim(claims, "cognito:username");
-            if (username == null) {
-                username = getStringClaim(claims, "username");
-            }
-            if (username == null) {
-                username = email != null ? email : sub;
-            }
+            if (username == null) username = getStringClaim(claims, "username");
+            if (username == null) username = email != null ? email : sub;
 
             return Optional.of(CognitoUserClaims.builder()
                     .sub(sub)
@@ -80,7 +76,7 @@ public class CognitoJwtService {
                     .groups(extractGroups(claims))
                     .build());
         } catch (Exception e) {
-            log.warn("Cognito JWT validation failed: {}", e.getMessage());
+            log.warn("D2C Cognito JWT validation failed: {}", e.getMessage());
             return Optional.empty();
         }
     }
@@ -98,7 +94,7 @@ public class CognitoJwtService {
         return List.of(raw.toString());
     }
 
-    private String getStringClaim(JWTClaimsSet claims, String name) {
+    private static String getStringClaim(JWTClaimsSet claims, String name) {
         Object val = claims.getClaim(name);
         return val != null ? val.toString() : null;
     }

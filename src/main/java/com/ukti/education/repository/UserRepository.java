@@ -29,4 +29,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsBySchoolUuidAndClassIdAndRollNumberAndUserType(
             UUID schoolUuid, UUID classId, String rollNumber, String userType);
+
+    long countBySchoolUuidAndUserType(UUID schoolUuid, String userType);
+
+    List<User> findBySchoolUuidAndUserTypeOrderByEmail(UUID schoolUuid, String userType);
 }
