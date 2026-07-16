@@ -43,9 +43,11 @@ public class ClassModuleRunService {
     private final StudentActivityProgressRepository studentActivityProgressRepository;
     private final UserRepository userRepository;
     private final SchoolClassRepository schoolClassRepository;
+    private final CurriculumCatalogService curriculumCatalogService;
 
     @Transactional
     public ClassModuleRunStartResponse startOrResume(ClassModuleRunStartRequest request, UUID initiatedBy) {
+        resolveCurriculumFromCatalog(request);
         if (request.getSectionIds() == null || request.getSectionIds().isEmpty()) {
             throw new ClassModuleRunException("BAD_REQUEST", "sectionIds must not be empty");
         }
@@ -59,8 +61,9 @@ public class ClassModuleRunService {
         Optional<ClassModuleRun> existing = classModuleRunRepository.findBySchoolIdAndClassIdAndModuleIdAndStatus(
                 request.getSchoolId(), request.getClassId(), request.getModuleId(), RUN_ACTIVE);
         if (existing.isPresent()) {
-            log.info("run_started existing run reused runId={}", existing.get().getId());
-            return toStartResponse(existing.get(), classSectionGateRepository.findByRunIdOrderBySectionIndexAsc(existing.get().getId()));
+            ClassModuleRun reused = backfillSectionActivitiesIfMissing(existing.get());
+            log.info("run_started existing run reused runId={}", reused.getId());
+            return toStartResponse(reused, classSectionGateRepository.findByRunIdOrderBySectionIndexAsc(reused.getId()));
         }
 
         String completionRule = normalizeCompletionRule(request.getCompletionRule());
@@ -528,8 +531,54 @@ public class ClassModuleRunService {
         }
     }
 
+    private void resolveCurriculumFromCatalog(ClassModuleRunStartRequest request) {
+        Optional<List<String>> dbSectionIds = curriculumCatalogService.getSectionIdsForModule(request.getModuleId());
+        Optional<Map<String, List<String>>> dbSectionActivities =
+                curriculumCatalogService.getSectionActivitiesForModule(request.getModuleId());
+
+        if (dbSectionIds.isEmpty() || dbSectionActivities.isEmpty()) {
+            return;
+        }
+
+        List<String> catalogSectionIds = dbSectionIds.get();
+        Map<String, List<String>> catalogSectionActivities = dbSectionActivities.get();
+
+        if (request.getSectionIds() == null || request.getSectionIds().isEmpty()) {
+            request.setSectionIds(catalogSectionIds);
+        } else if (!new HashSet<>(request.getSectionIds()).equals(new HashSet<>(catalogSectionIds))) {
+            log.warn("run_start_section_ids_mismatch moduleId={} — using catalog", request.getModuleId());
+            request.setSectionIds(catalogSectionIds);
+        }
+
+        if (request.getSectionActivities() == null || request.getSectionActivities().isEmpty()) {
+            request.setSectionActivities(catalogSectionActivities);
+        } else if (!request.getSectionActivities().equals(catalogSectionActivities)) {
+            log.warn("run_start_section_activities_mismatch moduleId={} — using catalog", request.getModuleId());
+            request.setSectionActivities(catalogSectionActivities);
+        }
+    }
+
+    private ClassModuleRun backfillSectionActivitiesIfMissing(ClassModuleRun run) {
+        if (run.getSectionActivities() != null && !run.getSectionActivities().isEmpty()) {
+            return run;
+        }
+        return curriculumCatalogService.getSectionActivitiesForModule(run.getModuleId())
+                .map(activities -> {
+                    run.setSectionActivities(activities);
+                    return classModuleRunRepository.save(run);
+                })
+                .orElse(run);
+    }
+
     private List<String> curriculumForSectionOrThrow(ClassModuleRun run, String sectionId) {
         Map<String, List<String>> map = run.getSectionActivities();
+        if (map == null || map.isEmpty()) {
+            map = curriculumCatalogService.getSectionActivitiesForModule(run.getModuleId()).orElse(null);
+            if (map != null && !map.isEmpty()) {
+                run.setSectionActivities(map);
+                classModuleRunRepository.save(run);
+            }
+        }
         if (map == null || map.isEmpty()) {
             throw new ClassModuleRunException(
                     "CURRICULUM_MISSING",

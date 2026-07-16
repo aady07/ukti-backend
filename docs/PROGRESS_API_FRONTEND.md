@@ -4,6 +4,8 @@
 
 **Auth:** All progress endpoints require `Authorization: Bearer <cognito_id_token>`. User must exist in our DB (call POST /users first).
 
+**School mode:** When a school admin runs an activity for a student, pass `X-Roll-Number` and optionally `X-Class-Id` headers. Progress is stored for that student. See `docs/UKTI_SCHOOLS_API_FRONTEND.md` for details.
+
 ---
 
 ## Endpoints Overview

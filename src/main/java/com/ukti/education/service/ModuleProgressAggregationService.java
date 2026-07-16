@@ -33,6 +33,7 @@ public class ModuleProgressAggregationService {
     private final UserRepository userRepository;
     private final UserActivityProgressRepository progressRepository;
     private final SchoolClassRepository schoolClassRepository;
+    private final CurriculumCatalogService curriculumCatalogService;
 
     public Optional<StudentModulesProgressResponse> getStudentModuleProgress(UUID schoolId, UUID classId, String rollNumber) {
         Optional<User> studentOpt = userRepository.findBySchoolUuidAndClassIdAndRollNumberAndUserType(
@@ -48,14 +49,19 @@ public class ModuleProgressAggregationService {
                 .toList();
 
         Map<String, Integer> classTotalsByModule = buildModuleTotals(classRows);
+        Map<String, Integer> catalogTotalsByModule = catalogTotalsForClass(classId, classRows);
         Map<String, Integer> completedByModule = buildCompletedCounts(studentRows);
-        Set<String> moduleIds = mergeModuleIds(classTotalsByModule.keySet(), completedByModule.keySet());
+        Set<String> moduleIds = mergeModuleIds(
+                mergeModuleIds(classTotalsByModule.keySet(), completedByModule.keySet()),
+                catalogTotalsByModule.keySet());
         String classLevel = resolveClassLevel(classId, classRows);
 
         List<StudentModulesProgressResponse.ModuleProgressItem> modules = new ArrayList<>();
         for (String moduleId : moduleIds) {
             int completedCount = completedByModule.getOrDefault(moduleId, 0);
-            int totalCount = Math.max(classTotalsByModule.getOrDefault(moduleId, 0), completedCount);
+            int totalCount = Math.max(
+                    catalogTotalsByModule.getOrDefault(moduleId, 0),
+                    Math.max(classTotalsByModule.getOrDefault(moduleId, 0), completedCount));
             int percent = totalCount > 0 ? Math.min(100, (int) Math.round(100.0 * completedCount / totalCount)) : 0;
             modules.add(StudentModulesProgressResponse.ModuleProgressItem.builder()
                     .moduleId(moduleId)
@@ -79,14 +85,18 @@ public class ModuleProgressAggregationService {
         List<UserActivityProgress> classRows = progressRepository.findBySchoolAndClassStudents(schoolId, classId);
 
         Map<String, Integer> classTotalsByModule = buildModuleTotals(classRows);
+        Map<String, Integer> catalogTotalsByModule = catalogTotalsForClass(classId, classRows);
         Map<UUID, List<UserActivityProgress>> rowsByUser = classRows.stream()
                 .filter(row -> row.getUser() != null)
                 .collect(Collectors.groupingBy(row -> row.getUser().getId()));
         String classLevel = resolveClassLevel(classId, classRows);
 
+        Set<String> moduleIds = mergeModuleIds(classTotalsByModule.keySet(), catalogTotalsByModule.keySet());
         List<ClassModulesProgressResponse.ModuleProgressItem> modules = new ArrayList<>();
-        for (String moduleId : classTotalsByModule.keySet()) {
-            int totalCount = classTotalsByModule.getOrDefault(moduleId, 0);
+        for (String moduleId : moduleIds) {
+            int totalCount = Math.max(
+                    catalogTotalsByModule.getOrDefault(moduleId, 0),
+                    classTotalsByModule.getOrDefault(moduleId, 0));
             int studentsWithData = 0;
             int percentTotal = 0;
 
@@ -115,6 +125,14 @@ public class ModuleProgressAggregationService {
                 .studentsTracked(students.size())
                 .modules(modules)
                 .build();
+    }
+
+    private Map<String, Integer> catalogTotalsForClass(UUID classId, List<UserActivityProgress> rows) {
+        String classLevel = resolveClassLevel(classId, rows);
+        if (classLevel == null || classLevel.isBlank()) {
+            return Map.of();
+        }
+        return curriculumCatalogService.getTrackableTotalsForClassLevel(classLevel);
     }
 
     private Map<String, Integer> buildModuleTotals(List<UserActivityProgress> rows) {
@@ -199,6 +217,10 @@ public class ModuleProgressAggregationService {
             case "ukg" -> "ukg";
             case "grade1", "class1", "1" -> "grade1";
             case "grade2", "class2", "2" -> "grade2";
+            case "grade3", "class3", "3" -> "grade3";
+            case "grade4", "class4", "4" -> "grade4";
+            case "grade5", "class5", "5" -> "grade5";
+            case "laams" -> "laams";
             default -> null;
         };
     }

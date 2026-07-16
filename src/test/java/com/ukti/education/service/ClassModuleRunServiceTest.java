@@ -40,6 +40,8 @@ class ClassModuleRunServiceTest {
     private UserRepository userRepository;
     @Mock
     private SchoolClassRepository schoolClassRepository;
+    @Mock
+    private CurriculumCatalogService curriculumCatalogService;
 
     @InjectMocks
     private ClassModuleRunService service;
@@ -236,5 +238,36 @@ class ClassModuleRunServiceTest {
         assertEquals(2, merged.get("stationFlowV1").get("challengeIndex").asInt());
         assertEquals(0, merged.get("stationFlowV1").get("rowIndex").asInt());
         assertEquals(2, merged.get("stationFlowV1").get("rollsDoneForStep").size());
+    }
+
+    @Test
+    void startRunDerivesSectionActivitiesFromCatalog() {
+        when(curriculumCatalogService.getSectionIdsForModule("grade4-module-2"))
+                .thenReturn(Optional.of(List.of("section-1")));
+        when(curriculumCatalogService.getSectionActivitiesForModule("grade4-module-2"))
+                .thenReturn(Optional.of(Map.of("section-1", List.of("g4-m2-test-activity"))));
+        when(schoolClassRepository.findById(classId)).thenReturn(Optional.of(
+                SchoolClass.builder().id(classId).schoolId(schoolId).name("Grade 4").build()));
+        when(classModuleRunRepository.findBySchoolIdAndClassIdAndModuleIdAndStatus(
+                schoolId, classId, "grade4-module-2", "active")).thenReturn(Optional.empty());
+        when(classModuleRunRepository.save(any(ClassModuleRun.class))).thenAnswer(inv -> {
+            ClassModuleRun r = inv.getArgument(0);
+            if (r.getId() == null) r.setId(runId);
+            return r;
+        });
+        when(userRepository.findBySchoolUuidAndClassIdAndUserTypeOrderByRollNumber(schoolId, classId, "student"))
+                .thenReturn(List.of());
+
+        ClassModuleRunStartRequest request = new ClassModuleRunStartRequest();
+        request.setSchoolId(schoolId);
+        request.setClassId(classId);
+        request.setModuleId("grade4-module-2");
+
+        service.startOrResume(request, null);
+
+        ArgumentCaptor<ClassModuleRun> cap = ArgumentCaptor.forClass(ClassModuleRun.class);
+        verify(classModuleRunRepository).save(cap.capture());
+        assertEquals(List.of("section-1"), cap.getValue().getSectionOrder());
+        assertEquals(List.of("g4-m2-test-activity"), cap.getValue().getSectionActivities().get("section-1"));
     }
 }
