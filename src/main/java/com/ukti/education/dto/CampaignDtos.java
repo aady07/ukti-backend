@@ -73,12 +73,45 @@ public final class CampaignDtos {
     public static class PartAttemptResponse {
         private UUID id;
         private UUID sessionId;
+        private String packId;
         private String passageId;
         private int partIndex;
         private String status;
         private String geminiScoreJson;
         private Integer accuracyPct;
         private Long durationMs;
+        private Instant createdAt;
+    }
+
+    @Data
+    @Builder
+    public static class MeAttemptItem {
+        private UUID attemptId;
+        private UUID sessionId;
+        private String packId;
+        private String passageId;
+        private int partIndex;
+        private Integer accuracyPct;
+        private Long durationMs;
+        private String status;
+        private String geminiScoreJson;
+        private Instant createdAt;
+    }
+
+    @Data
+    @Builder
+    public static class MePackSummary {
+        private String packId;
+        /** Distinct reading sessions for this pack. */
+        private long attemptCount;
+        private MeAttemptItem latest;
+    }
+
+    @Data
+    @Builder
+    public static class MeAttemptsResponse {
+        private List<MeAttemptItem> attempts;
+        private List<MePackSummary> packs;
     }
 
     @Data
