@@ -29,7 +29,7 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/users/**", "/progress/**", "/units/**", "/tasks/**", "/activities/**", "/schools/**", "/auth/**", "/v1/class-modules/**", "/v1/engagement/**", "/v1/curriculum/**").permitAll()
+                        .requestMatchers("/users/**", "/progress/**", "/units/**", "/tasks/**", "/activities/**", "/schools/**", "/auth/**", "/v1/class-modules/**", "/v1/engagement/**", "/v1/curriculum/**", "/v1/campaign/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .httpBasic(AbstractHttpConfigurer::disable)
