@@ -121,6 +121,21 @@ public class CampaignController {
         }
     }
 
+    @GetMapping("/me/attempts")
+    public ResponseEntity<?> myAttempts(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        try {
+            return ResponseEntity.ok(campaignService.listMyAttempts(authorization));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new UserController.ErrorResponse("UNAUTHORIZED", e.getMessage()));
+        } catch (Exception e) {
+            log.error("campaign_me_attempts_failed {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "INTERNAL_ERROR", "message", "Failed to load attempts"));
+        }
+    }
+
     @GetMapping("/admin/summary")
     public ResponseEntity<?> adminSummary(
             @RequestHeader(value = "Authorization", required = false) String authorization) {

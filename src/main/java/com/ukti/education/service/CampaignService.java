@@ -105,28 +105,23 @@ public class CampaignService {
     @Transactional
     public CampaignDtos.PartAttemptResponse upsertPart(UUID sessionId, CampaignDtos.PartAttemptRequest req) {
         CampaignSession session = requireSession(sessionId);
-        CampaignPartAttempt part = partRepository
-                .findBySessionIdAndPassageIdAndPartIndex(sessionId, req.getPassageId(), req.getPartIndex())
-                .orElseGet(() -> CampaignPartAttempt.builder()
-                        .sessionId(sessionId)
-                        .passageId(req.getPassageId())
-                        .partIndex(req.getPartIndex())
-                        .status("pending_score")
-                        .build());
-
-        part.setPackId(trimToNull(req.getPackId()));
-        part.setExpectedText(req.getExpectedText());
-        part.setSpokenTranscript(req.getSpokenTranscript());
-        part.setDurationMs(req.getDurationMs());
-        part.setPauseCount(req.getPauseCount() != null ? req.getPauseCount() : 0);
-        part.setWrongCount(req.getWrongCount() != null ? req.getWrongCount() : 0);
-        part.setSkipCount(req.getSkipCount() != null ? req.getSkipCount() : 0);
-        part.setWordsTotal(req.getWordsTotal());
-        part.setWordsMatched(req.getWordsMatched());
-        part.setAccuracyPct(req.getAccuracyPct());
-        if (part.getGeminiScoreJson() == null) {
-            part.setStatus("pending_score");
-        }
+        // Always insert a new attempt row (history). Score job updates the latest for partIndex.
+        CampaignPartAttempt part = CampaignPartAttempt.builder()
+                .sessionId(sessionId)
+                .packId(trimToNull(req.getPackId()))
+                .passageId(req.getPassageId())
+                .partIndex(req.getPartIndex())
+                .expectedText(req.getExpectedText())
+                .spokenTranscript(req.getSpokenTranscript())
+                .durationMs(req.getDurationMs())
+                .pauseCount(req.getPauseCount() != null ? req.getPauseCount() : 0)
+                .wrongCount(req.getWrongCount() != null ? req.getWrongCount() : 0)
+                .skipCount(req.getSkipCount() != null ? req.getSkipCount() : 0)
+                .wordsTotal(req.getWordsTotal())
+                .wordsMatched(req.getWordsMatched())
+                .accuracyPct(req.getAccuracyPct())
+                .status("pending_score")
+                .build();
         part = partRepository.save(part);
 
         eventRepository.save(CampaignEvent.builder()
@@ -153,11 +148,16 @@ public class CampaignService {
     public CampaignDtos.PartAttemptResponse savePartScore(
             UUID sessionId, int partIndex, CampaignDtos.PartScoreRequest req) {
         requireSession(sessionId);
-        List<CampaignPartAttempt> parts = partRepository.findBySessionIdAndPartIndex(sessionId, partIndex);
+        List<CampaignPartAttempt> parts =
+                partRepository.findBySessionIdAndPartIndexOrderByCreatedAtDesc(sessionId, partIndex);
         if (parts.isEmpty()) {
             throw new IllegalArgumentException("Part attempt not found for index " + partIndex);
         }
-        CampaignPartAttempt part = parts.get(0);
+        // Prefer the newest pending attempt; else newest overall.
+        CampaignPartAttempt part = parts.stream()
+                .filter(p -> p.getGeminiScoreJson() == null || "pending_score".equals(p.getStatus()))
+                .findFirst()
+                .orElse(parts.get(0));
         part.setGeminiScoreJson(req.getGeminiScoreJson());
         part.setStatus(req.getStatus() != null && !req.getStatus().isBlank() ? req.getStatus() : "scored");
         part = partRepository.save(part);
@@ -166,9 +166,71 @@ public class CampaignService {
 
     public Optional<CampaignDtos.PartAttemptResponse> getPart(UUID sessionId, int partIndex) {
         requireSession(sessionId);
-        return partRepository.findBySessionIdAndPartIndex(sessionId, partIndex).stream()
+        return partRepository.findBySessionIdAndPartIndexOrderByCreatedAtDesc(sessionId, partIndex).stream()
                 .findFirst()
                 .map(this::toPartResponse);
+    }
+
+    public CampaignDtos.MeAttemptsResponse listMyAttempts(String authorization) {
+        CognitoUserClaims claims = resolveCampaignAuthClaims(authorization)
+                .orElseThrow(() -> new SecurityException("Valid D2C Cognito JWT required"));
+
+        List<CampaignSession> sessions =
+                sessionRepository.findByCognitoSubOrderByCreatedAtDesc(claims.getSub());
+        if (sessions.isEmpty()) {
+            return CampaignDtos.MeAttemptsResponse.builder()
+                    .attempts(List.of())
+                    .packs(List.of())
+                    .build();
+        }
+
+        List<UUID> sessionIds = sessions.stream().map(CampaignSession::getId).collect(Collectors.toList());
+        Map<UUID, String> sessionPack = sessions.stream()
+                .collect(Collectors.toMap(CampaignSession::getId, s -> s.getPackId() != null ? s.getPackId() : "", (a, b) -> a));
+
+        List<CampaignPartAttempt> parts =
+                partRepository.findBySessionIdInOrderByCreatedAtDesc(sessionIds);
+
+        List<CampaignDtos.MeAttemptItem> attempts = parts.stream()
+                .map(p -> {
+                    String packId = p.getPackId() != null && !p.getPackId().isBlank()
+                            ? p.getPackId()
+                            : sessionPack.getOrDefault(p.getSessionId(), null);
+                    return CampaignDtos.MeAttemptItem.builder()
+                            .attemptId(p.getId())
+                            .sessionId(p.getSessionId())
+                            .packId(packId)
+                            .passageId(p.getPassageId())
+                            .partIndex(p.getPartIndex())
+                            .accuracyPct(p.getAccuracyPct())
+                            .durationMs(p.getDurationMs())
+                            .status(p.getStatus())
+                            .geminiScoreJson(p.getGeminiScoreJson())
+                            .createdAt(p.getCreatedAt())
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        // One "attempt" = one session for a pack. Latest item = newest part row for that pack.
+        Map<String, List<CampaignDtos.MeAttemptItem>> byPack = attempts.stream()
+                .filter(a -> a.getPackId() != null && !a.getPackId().isBlank())
+                .collect(Collectors.groupingBy(CampaignDtos.MeAttemptItem::getPackId, LinkedHashMap::new, Collectors.toList()));
+
+        List<CampaignDtos.MePackSummary> packSummaries = new ArrayList<>();
+        for (Map.Entry<String, List<CampaignDtos.MeAttemptItem>> e : byPack.entrySet()) {
+            List<CampaignDtos.MeAttemptItem> items = e.getValue();
+            long sessionCount = items.stream().map(CampaignDtos.MeAttemptItem::getSessionId).distinct().count();
+            packSummaries.add(CampaignDtos.MePackSummary.builder()
+                    .packId(e.getKey())
+                    .attemptCount(sessionCount)
+                    .latest(items.get(0))
+                    .build());
+        }
+
+        return CampaignDtos.MeAttemptsResponse.builder()
+                .attempts(attempts)
+                .packs(packSummaries)
+                .build();
     }
 
     public List<CampaignDtos.PartAttemptResponse> listParts(UUID sessionId) {
@@ -414,13 +476,36 @@ public class CampaignService {
             eventCounts.put(String.valueOf(row[0]), (Long) row[1]);
         }
 
-        long opens = eventCounts.getOrDefault("page_open", 0L);
-        long startedRead = eventCounts.getOrDefault("read_start", 0L);
-        long spoke = eventCounts.getOrDefault("mic_start", 0L)
-                + eventCounts.getOrDefault("speech_final", 0L);
-        long freeCompleted = eventCounts.getOrDefault("free_completed", 0L);
-        long signedUp = eventCounts.getOrDefault("signup", 0L);
-        long loggedIn = eventCounts.getOrDefault("login", 0L);
+        // Funnel KPIs = distinct sessions per stage (never raw event spam).
+        long totalSessions = sessionRepository.count();
+        long opens = Math.max(
+                eventRepository.countDistinctSessionsByEventType("page_open"),
+                totalSessions
+        );
+        long startedRead = eventRepository.countDistinctSessionsByEventType("read_start");
+        long spoke = eventRepository.countDistinctSessionsByEventTypes(
+                List.of("mic_start", "speech_final")
+        );
+        long freeCompleted = Math.max(
+                sessionRepository.countByFreeCompletedAtIsNotNull(),
+                eventRepository.countDistinctSessionsByEventType("free_completed")
+        );
+        long signedUp = Math.max(
+                sessionRepository.countByCognitoSubIsNotNull(),
+                eventRepository.countDistinctSessionsByEventType("signup")
+        );
+        long loggedIn = eventRepository.countDistinctSessionsByEventType("login");
+
+        // Reading funnel is monotonic (unique sessions). Auth steps are capped only by opens
+        // (someone can sign up from landing without finishing the free try).
+        startedRead = Math.min(startedRead, opens);
+        spoke = Math.min(spoke, startedRead > 0 ? startedRead : opens);
+        freeCompleted = Math.min(
+                freeCompleted,
+                spoke > 0 ? spoke : (startedRead > 0 ? startedRead : opens)
+        );
+        signedUp = Math.min(signedUp, opens);
+        loggedIn = Math.min(loggedIn, opens);
 
         List<CampaignPartAttempt> allParts = partRepository.findAll();
         Double avg = null;
@@ -442,7 +527,7 @@ public class CampaignService {
                 .loggedIn(loggedIn)
                 .avgGeminiScore(avg)
                 .eventCounts(eventCounts)
-                .totalSessions(sessionRepository.count())
+                .totalSessions(totalSessions)
                 .totalLeads(leadRepository.count())
                 .build();
     }
@@ -507,12 +592,14 @@ public class CampaignService {
         return CampaignDtos.PartAttemptResponse.builder()
                 .id(p.getId())
                 .sessionId(p.getSessionId())
+                .packId(p.getPackId())
                 .passageId(p.getPassageId())
                 .partIndex(p.getPartIndex())
                 .status(p.getStatus())
                 .geminiScoreJson(p.getGeminiScoreJson())
                 .accuracyPct(p.getAccuracyPct())
                 .durationMs(p.getDurationMs())
+                .createdAt(p.getCreatedAt())
                 .build();
     }
 
