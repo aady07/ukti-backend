@@ -25,9 +25,14 @@ Call this after the user signs up or signs in with Cognito. User info (sub, emai
 ```json
 {
   "displayName": "John Doe",
-  "schoolId": "school-123"
+  "schoolId": "school-123",
+  "signupType": "individual",
+  "organizationName": "ABC School"
 }
 ```
+
+- `signupType`: `"individual"` (default) or `"organization"` for school admin signup
+- `organizationName`: Required when `signupType` is `"organization"`; creates school and links admin
 
 If no body, user is created/updated from JWT claims only.
 
@@ -80,10 +85,15 @@ Authorization: Bearer eyJraWQ...
   "username": "johndoe",
   "displayName": "John Doe",
   "schoolId": "school-123",
+  "userType": "individual",
+  "schoolUuid": null,
+  "schoolName": null,
   "createdAt": "2026-02-21T09:00:00Z",
   "updatedAt": "2026-02-21T09:00:00Z"
 }
 ```
+
+**New fields (UKTI in Schools):** `userType` (`"individual"` \| `"school_admin"` \| `"student"`), `schoolUuid`, `schoolName`
 
 **Response (404):** User not found in our DB (call POST `/users` first).
 

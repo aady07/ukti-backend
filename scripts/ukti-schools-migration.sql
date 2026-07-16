@@ -18,13 +18,13 @@ CREATE TABLE IF NOT EXISTS schools (
 -- -----------------------------------------------------------------------------
 -- 2. Classes table
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS classes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(school_id, name)
-);
+    CREATE TABLE IF NOT EXISTS classes (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(school_id, name)
+    );
 
 CREATE INDEX IF NOT EXISTS idx_classes_school_id ON classes(school_id);
 
